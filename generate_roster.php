@@ -621,11 +621,6 @@ function solveRosterJoint($day_idx, $calendar_days, $employees, &$roster, &$off_
         $target_m_total = min(5, $floor_working_count);
         $target_n_total = min(5, $floor_working_count);
         
-        if ($relaxation_level >= 1) {
-            $target_m_total = max(3, $target_m_total - 1);
-            $target_n_total = max(3, $target_n_total - 1);
-        }
-        
         $gender_min_males = ($relaxation_level >= 2) ? 2 : 3;
         $gender_min_fems = ($relaxation_level >= 2) ? 1 : 2;
 
