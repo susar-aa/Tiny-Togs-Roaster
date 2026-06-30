@@ -591,8 +591,8 @@ function solveRosterJoint($day_idx, $calendar_days, $employees, &$roster, &$off_
         }
 
         $total_working_count = count($temp_roster) + count($working_rotating);
-        $target_m_total = min($is_weekend_or_holiday ? 9 : 8, $total_working_count);
-        $target_n_total = min($is_weekend_or_holiday ? 9 : 8, $total_working_count);
+        $target_m_total = min(5, $total_working_count);
+        $target_n_total = min(5, $total_working_count);
         
         if ($relaxation_level >= 1) {
             $target_m_total = max(3, $target_m_total - 1);
