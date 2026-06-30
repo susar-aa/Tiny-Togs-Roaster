@@ -196,6 +196,7 @@ try {
     }
 
     updateProgress(95, "Valid schedule found! Saving mathematical matrix to database...", 'processing', $roster);
+    ensureInitialStateInHistory($pdo, $year, $month);
     $pdo->beginTransaction();
     $stmt_clear = $pdo->prepare("DELETE FROM monthly_roster WHERE date BETWEEN ? AND ?");
     $stmt_clear->execute([$start_date, $end_date]);
@@ -209,6 +210,7 @@ try {
     }
 
     $pdo->commit();
+    saveRosterStateToHistory($pdo, $year, $month);
     updateProgress(100, "Complete!", 'processing', $roster);
     
     if ($attempt > 1) array_unshift($debug_logs, "SOLVER STRUGGLED DUE TO: " . $deepest_fail_reason);

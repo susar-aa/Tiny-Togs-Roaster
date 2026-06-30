@@ -87,6 +87,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (res.success) {
                     state.rosterData = res.data;
                     renderRosterGrid();
+
+                    // Update Generate button status
+                    const btnGen = document.getElementById('btn-generate-roster');
+                    if (btnGen) {
+                        if (state.rosterData && state.rosterData.length > 0) {
+                            btnGen.disabled = true;
+                            btnGen.title = "Roster already generated. Clear it to regenerate.";
+                            btnGen.style.opacity = '0.5';
+                            btnGen.style.cursor = 'not-allowed';
+                        } else {
+                            btnGen.disabled = false;
+                            btnGen.title = "";
+                            btnGen.style.opacity = '1';
+                            btnGen.style.cursor = 'pointer';
+                        }
+                    }
+
+                    // Update Undo/Redo buttons
+                    const btnUndo = document.getElementById('btn-undo');
+                    const btnRedo = document.getElementById('btn-redo');
+                    if (btnUndo) btnUndo.disabled = !res.can_undo;
+                    if (btnRedo) btnRedo.disabled = !res.can_redo;
                 } else showToast(res.message, 'error');
             })
             .catch(err => showToast('Error loading roster: ' + err.message, 'error'));
@@ -714,10 +736,60 @@ document.addEventListener('DOMContentLoaded', () => {
         const btnClear = document.getElementById('btn-clear-roster');
         const btnExportImage = document.getElementById('btn-export-image');
         const btnExportPdf = document.getElementById('btn-export-pdf');
-
+        const btnUndo = document.getElementById('btn-undo');
+        const btnRedo = document.getElementById('btn-redo');
+ 
         // Hook up the new dynamic export functions
         btnExportImage.addEventListener('click', () => triggerExport('image'));
         btnExportPdf.addEventListener('click', () => triggerExport('pdf'));
+
+        if (btnUndo) {
+            btnUndo.addEventListener('click', () => {
+                btnUndo.disabled = true;
+                const fd = new FormData();
+                fd.append('year', state.year);
+                fd.append('month', state.month);
+                fetch('api.php?action=undo', { method: 'POST', body: fd })
+                .then(res => res.json())
+                .then(res => {
+                    if (res.success) {
+                        showToast(res.message, 'success');
+                        fetchRoster();
+                    } else {
+                        showToast(res.message, 'error');
+                        btnUndo.disabled = false;
+                    }
+                })
+                .catch(err => {
+                    showToast('Error executing Undo: ' + err.message, 'error');
+                    btnUndo.disabled = false;
+                });
+            });
+        }
+ 
+        if (btnRedo) {
+            btnRedo.addEventListener('click', () => {
+                btnRedo.disabled = true;
+                const fd = new FormData();
+                fd.append('year', state.year);
+                fd.append('month', state.month);
+                fetch('api.php?action=redo', { method: 'POST', body: fd })
+                .then(res => res.json())
+                .then(res => {
+                    if (res.success) {
+                        showToast(res.message, 'success');
+                        fetchRoster();
+                    } else {
+                        showToast(res.message, 'error');
+                        btnRedo.disabled = false;
+                    }
+                })
+                .catch(err => {
+                    showToast('Error executing Redo: ' + err.message, 'error');
+                    btnRedo.disabled = false;
+                });
+            });
+        }
 
         btnGen.addEventListener('click', () => {
             btnGen.textContent = 'Generating...';
@@ -1286,13 +1358,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderUsersTable() {
         const tbody = document.querySelector('#table-users tbody');
+        if (!tbody) return;
         tbody.innerHTML = '';
-
+ 
         if (state.users.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; color:var(--text-muted); padding: 1.5rem;">No users found.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:var(--text-muted); padding: 1.5rem;">No users found.</td></tr>`;
             return;
         }
-
+ 
         state.users.forEach(user => {
             const tr = document.createElement('tr');
             
@@ -1301,9 +1374,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 month: 'short',
                 day: 'numeric'
             });
-
+ 
             tr.innerHTML = `
                 <td style="font-weight:600; color:var(--text-main);">${escapeHtml(user.username)}</td>
+                <td><span class="badge ${user.role === 'Admin' ? 'badge-danger' : 'badge-normal'}">${escapeHtml(user.role || 'Manager')}</span></td>
                 <td style="color:var(--text-muted); font-size:0.85rem;">${createdDate}</td>
                 <td style="text-align:right;">
                     <div style="display:inline-flex; gap:0.5rem; justify-content:flex-end; align-items:center; white-space:nowrap;">
@@ -1312,15 +1386,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 </td>
             `;
-
+ 
             tr.querySelector('.btn-edit-user').addEventListener('click', () => {
                 editUser(user);
             });
-
+ 
             tr.querySelector('.btn-delete-user').addEventListener('click', () => {
                 deleteUser(user.id, user.username);
             });
-
+ 
             tbody.appendChild(tr);
         });
     }
@@ -1333,6 +1407,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('user-password').removeAttribute('required');
         document.getElementById('password-help-text').style.display = 'block';
         document.getElementById('label-user-password').textContent = 'New Password (Optional)';
+        document.getElementById('user-role').value = user.role || 'Manager';
         document.getElementById('user-form-title').textContent = 'Edit User Settings';
         document.getElementById('btn-cancel-user-edit').style.display = 'inline-block';
         document.getElementById('btn-save-user').textContent = 'Update User';
@@ -1346,6 +1421,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('user-password').setAttribute('required', 'required');
         document.getElementById('password-help-text').style.display = 'none';
         document.getElementById('label-user-password').textContent = 'Password';
+        document.getElementById('user-role').value = 'Manager';
         document.getElementById('user-form-title').textContent = 'Create New User';
         document.getElementById('btn-cancel-user-edit').style.display = 'none';
         document.getElementById('btn-save-user').textContent = 'Create User';
@@ -1353,15 +1429,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function initUsersForm() {
         const form = document.getElementById('form-user');
+        if (!form) return; // Restrict execution if manager
         const btnCancel = document.getElementById('btn-cancel-user-edit');
-
+ 
         form.addEventListener('submit', (e) => {
             e.preventDefault();
             
             const userId = document.getElementById('user-id').value;
             const username = document.getElementById('user-username').value.trim();
             const password = document.getElementById('user-password').value;
-
+            const role = document.getElementById('user-role').value;
+ 
             if (!userId && !password) {
                 showToast('Password is required for new users.', 'error');
                 return;
@@ -1370,12 +1448,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 showToast('Password must be at least 6 characters long.', 'error');
                 return;
             }
-
+ 
             const formData = new FormData();
             if (userId) formData.append('user_id', userId);
             formData.append('username', username);
             formData.append('password', password);
-
+            formData.append('role', role);
+ 
             fetch(`api.php?action=save_user`, {
                 method: 'POST',
                 body: formData
@@ -1392,7 +1471,7 @@ document.addEventListener('DOMContentLoaded', () => {
             })
             .catch(err => showToast('Error saving user: ' + err.message, 'error'));
         });
-
+ 
         btnCancel.addEventListener('click', resetUserForm);
     }
 

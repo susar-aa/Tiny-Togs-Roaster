@@ -23,6 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
         if ($user && password_verify($password, $user['password'])) {
             $_SESSION['user_id'] = $user['id'];
             $_SESSION['username'] = $user['username'];
+            $_SESSION['role'] = $user['role'];
             header("Location: index.php");
             exit;
         } else {
@@ -209,13 +210,14 @@ endif;
             </div>
         </div>
         
-        <!-- Navigation Tabs -->
         <nav class="nav-tabs">
             <button class="tab-btn active" data-tab="roster-tab">Roster Board</button>
             <button class="tab-btn" data-tab="employees-tab">Employees</button>
             <button class="tab-btn" data-tab="calendar-tab">Calendar Settings</button>
             <button class="tab-btn" data-tab="leave-tab">Leave Planner</button>
+            <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'Admin'): ?>
             <button class="tab-btn" data-tab="users-tab">User Management</button>
+            <?php endif; ?>
         </nav>
 
         <!-- Month & Year Selector -->
@@ -258,8 +260,16 @@ endif;
                             View, generate, export, or execute emergency swaps for the monthly shift schedule.
                         </p>
                     </div>
-                    <div style="display: flex; gap: 0.5rem;">
-                        <button class="btn btn-clear" id="btn-clear-roster">Clear Roster</button>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <button class="btn btn-secondary" id="btn-undo" title="Undo last change" disabled style="display: inline-flex; align-items: center; gap: 6px; padding: 0.4rem 0.8rem; font-size: 0.85rem; height: 36px;">
+                            <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3"></path></svg>
+                            Undo
+                        </button>
+                        <button class="btn btn-secondary" id="btn-redo" title="Redo next change" disabled style="display: inline-flex; align-items: center; gap: 6px; padding: 0.4rem 0.8rem; font-size: 0.85rem; height: 36px;">
+                            <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 15l6-6m0 0l-6-6m6 6H9a6 6 0 000 12h3"></path></svg>
+                            Redo
+                        </button>
+                        <button class="btn btn-clear" id="btn-clear-roster" style="height: 36px;">Clear Roster</button>
                     </div>
                 </div>
 
@@ -491,6 +501,7 @@ endif;
             </div>
         </div>
 
+        <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'Admin'): ?>
         <!-- TAB 5: USER MANAGEMENT -->
         <div id="users-tab" class="tab-content">
             <div class="grid-2">
@@ -512,6 +523,14 @@ endif;
                             <input type="password" id="user-password" class="form-control" placeholder="Enter password (min 6 characters)" required autocomplete="new-password">
                             <span id="password-help-text" style="font-size: 0.75rem; color: var(--text-muted); display: none; margin-top: 0.25rem;">Leave blank to keep current password.</span>
                         </div>
+
+                        <div class="form-group">
+                            <label for="user-role" class="form-label">User Level</label>
+                            <select id="user-role" class="form-control">
+                                <option value="Manager">Manager</option>
+                                <option value="Admin">Admin</option>
+                            </select>
+                        </div>
                         
                         <div style="display: flex; gap: 0.5rem; margin-top: 1.5rem;">
                             <button type="button" class="btn btn-secondary" id="btn-cancel-user-edit" style="display: none;">Cancel</button>
@@ -530,6 +549,7 @@ endif;
                             <thead>
                                 <tr>
                                     <th>Username</th>
+                                    <th>User Level</th>
                                     <th>Created Date</th>
                                     <th style="text-align: right; width: 120px;">Actions</th>
                                 </tr>
@@ -542,6 +562,7 @@ endif;
                 </div>
             </div>
         </div>
+        <?php endif; ?>
 
     </main>
 
@@ -665,6 +686,9 @@ endif;
     <!-- Toast Notification Container -->
     <div class="toast-container" id="toast-container"></div>
 
+    <script>
+        window.currentUserRole = <?= json_encode($_SESSION['role'] ?? 'Manager') ?>;
+    </script>
     <!-- App JavaScript Logic -->
     <script src="app.js"></script>
 </body>

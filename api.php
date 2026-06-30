@@ -385,7 +385,20 @@ switch ($action) {
 
             $stmt = $pdo->prepare("SELECT mr.* FROM monthly_roster mr WHERE mr.date BETWEEN ? AND ? ORDER BY mr.date ASC");
             $stmt->execute([$start_date, $end_date]);
-            echo json_encode(['success' => true, 'data' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+            $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            ensureInitialStateInHistory($pdo, $year, $month);
+            $current_idx = $_SESSION['roster_history_index'][$year][$month] ?? 0;
+            $stmt_max = $pdo->prepare("SELECT MAX(history_index) FROM roster_history WHERE year = ? AND month = ?");
+            $stmt_max->execute([$year, $month]);
+            $max_idx = (int)$stmt_max->fetchColumn();
+
+            echo json_encode([
+                'success' => true, 
+                'data' => $data,
+                'can_undo' => $current_idx > 0,
+                'can_redo' => $current_idx < $max_idx
+            ]);
         } catch (Exception $e) {
             echo json_encode(['success' => false, 'message' => $e->getMessage()]);
         }
@@ -400,8 +413,10 @@ switch ($action) {
             $days_in_month = cal_days_in_month(CAL_GREGORIAN, $month, $year);
             $end_date = "$year-$month_str-" . str_pad($days_in_month, 2, '0', STR_PAD_LEFT);
 
+            ensureInitialStateInHistory($pdo, $year, $month);
             $stmt = $pdo->prepare("DELETE FROM monthly_roster WHERE date BETWEEN ? AND ?");
             $stmt->execute([$start_date, $end_date]);
+            saveRosterStateToHistory($pdo, $year, $month);
             echo json_encode(['success' => true, 'message' => 'Monthly roster cleared successfully.']);
         } catch (Exception $e) {
             echo json_encode(['success' => false, 'message' => $e->getMessage()]);
@@ -535,6 +550,10 @@ switch ($action) {
                 exit;
             }
 
+            $year = (int)date('Y', strtotime($date));
+            $month = (int)date('n', strtotime($date));
+            ensureInitialStateInHistory($pdo, $year, $month);
+
             $pdo->beginTransaction();
 
             $upd1 = $pdo->prepare("UPDATE monthly_roster SET shift_code = ?, is_emergency_swap = 1, swapped_with_emp_id = ? WHERE emp_id = ? AND date = ?");
@@ -544,6 +563,9 @@ switch ($action) {
             $upd2->execute([$shift1, $emp1_id, $emp2_id, $date]);
 
             $pdo->commit();
+            $year = (int)date('Y', strtotime($date));
+            $month = (int)date('n', strtotime($date));
+            saveRosterStateToHistory($pdo, $year, $month);
 
             echo json_encode(['success' => true, 'message' => "Shifts successfully swapped via Drag & Drop!"]);
         } catch (Exception $e) {
@@ -603,6 +625,10 @@ switch ($action) {
                 exit;
             }
 
+            $year = (int)date('Y', strtotime($date));
+            $month = (int)date('n', strtotime($date));
+            ensureInitialStateInHistory($pdo, $year, $month);
+
             $pdo->beginTransaction();
 
             $upd_emp = $pdo->prepare("UPDATE monthly_roster SET shift_code = 'Off', is_emergency_swap = 1, swapped_with_emp_id = ? WHERE emp_id = ? AND date = ?");
@@ -619,6 +645,10 @@ switch ($action) {
             }
 
             $pdo->commit();
+            $year = (int)date('Y', strtotime($date));
+            $month = (int)date('n', strtotime($date));
+            saveRosterStateToHistory($pdo, $year, $month);
+
             echo json_encode(['success' => true, 'message' => $msg]);
         } catch (Exception $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
@@ -627,38 +657,48 @@ switch ($action) {
         break;
 
     case 'get_users':
+        if (($_SESSION['role'] ?? '') !== 'Admin') {
+            echo json_encode(['success' => false, 'message' => 'Unauthorized access. Only Admins can manage users.']);
+            exit;
+        }
         try {
-            $stmt = $pdo->query("SELECT id, username, created_at FROM users ORDER BY username ASC");
+            $stmt = $pdo->query("SELECT id, username, role, created_at FROM users ORDER BY username ASC");
             $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
             echo json_encode(['success' => true, 'data' => $users]);
         } catch (Exception $e) {
             echo json_encode(['success' => false, 'message' => $e->getMessage()]);
         }
         break;
-
+ 
     case 'save_user':
+        if (($_SESSION['role'] ?? '') !== 'Admin') {
+            echo json_encode(['success' => false, 'message' => 'Unauthorized access.']);
+            exit;
+        }
         try {
             $user_id = $_POST['user_id'] ?? null;
             $username = trim($_POST['username'] ?? '');
             $password = $_POST['password'] ?? '';
-
+            $role = $_POST['role'] ?? 'Manager';
+ 
             if (empty($username)) throw new Exception("Username cannot be empty.");
-
+ 
             if ($user_id) {
                 // Update
                 if (!empty($password)) {
                     if (strlen($password) < 6) throw new Exception("Password must be at least 6 characters.");
                     $passwordHash = password_hash($password, PASSWORD_DEFAULT);
-                    $stmt = $pdo->prepare("UPDATE users SET username = ?, password = ? WHERE id = ?");
-                    $stmt->execute([$username, $passwordHash, $user_id]);
+                    $stmt = $pdo->prepare("UPDATE users SET username = ?, password = ?, role = ? WHERE id = ?");
+                    $stmt->execute([$username, $passwordHash, $role, $user_id]);
                 } else {
-                    $stmt = $pdo->prepare("UPDATE users SET username = ? WHERE id = ?");
-                    $stmt->execute([$username, $user_id]);
+                    $stmt = $pdo->prepare("UPDATE users SET username = ?, role = ? WHERE id = ?");
+                    $stmt->execute([$username, $role, $user_id]);
                 }
                 
-                // If updated user is current user, update session username
+                // If updated user is current user, update session details
                 if ($_SESSION['user_id'] == $user_id) {
                     $_SESSION['username'] = $username;
+                    $_SESSION['role'] = $role;
                 }
                 
                 $message = "User updated successfully.";
@@ -667,8 +707,8 @@ switch ($action) {
                 if (empty($password)) throw new Exception("Password is required for new users.");
                 if (strlen($password) < 6) throw new Exception("Password must be at least 6 characters.");
                 $passwordHash = password_hash($password, PASSWORD_DEFAULT);
-                $stmt = $pdo->prepare("INSERT INTO users (username, password) VALUES (?, ?)");
-                $stmt->execute([$username, $passwordHash]);
+                $stmt = $pdo->prepare("INSERT INTO users (username, password, role) VALUES (?, ?, ?)");
+                $stmt->execute([$username, $passwordHash, $role]);
                 $user_id = $pdo->lastInsertId();
                 $message = "User created successfully.";
             }
@@ -677,22 +717,26 @@ switch ($action) {
             echo json_encode(['success' => false, 'message' => $e->getMessage()]);
         }
         break;
-
+ 
     case 'delete_user':
+        if (($_SESSION['role'] ?? '') !== 'Admin') {
+            echo json_encode(['success' => false, 'message' => 'Unauthorized access.']);
+            exit;
+        }
         try {
             $user_id = (int)($_POST['user_id'] ?? 0);
             if (!$user_id) throw new Exception("Invalid user ID.");
-
+ 
             if ($_SESSION['user_id'] == $user_id) {
                 throw new Exception("You cannot delete your own logged-in account.");
             }
-
+ 
             // Check total users count to prevent locking out
             $count = $pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
             if ($count <= 1) {
                 throw new Exception("Cannot delete the last user in the system.");
             }
-
+ 
             $stmt = $pdo->prepare("DELETE FROM users WHERE id = ?");
             $stmt->execute([$user_id]);
             echo json_encode(['success' => true, 'message' => "User deleted successfully."]);
@@ -741,6 +785,10 @@ switch ($action) {
                 exit;
             }
 
+            $year = (int)date('Y', strtotime($date));
+            $month = (int)date('n', strtotime($date));
+            ensureInitialStateInHistory($pdo, $year, $month);
+
             // Perform update
             $pdo->beginTransaction();
 
@@ -765,7 +813,123 @@ switch ($action) {
             }
 
             $pdo->commit();
+            $year = (int)date('Y', strtotime($date));
+            $month = (int)date('n', strtotime($date));
+            saveRosterStateToHistory($pdo, $year, $month);
+
             echo json_encode(['success' => true, 'message' => "Shift successfully updated for {$emp['name']} to '{$new_shift}'."]);
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        }
+        break;
+
+    case 'undo':
+        try {
+            $year = (int)($_POST['year'] ?? date('Y'));
+            $month = (int)($_POST['month'] ?? date('m'));
+
+            ensureInitialStateInHistory($pdo, $year, $month);
+            $current_idx = $_SESSION['roster_history_index'][$year][$month];
+
+            if ($current_idx > 0) {
+                $new_idx = $current_idx - 1;
+                
+                // Get state
+                $stmt = $pdo->prepare("SELECT state_json FROM roster_history WHERE year = ? AND month = ? AND history_index = ?");
+                $stmt->execute([$year, $month, $new_idx]);
+                $state_json = $stmt->fetchColumn();
+
+                if ($state_json !== false) {
+                    $pdo->beginTransaction();
+
+                    $month_str = str_pad($month, 2, '0', STR_PAD_LEFT);
+                    $start_date = "$year-$month_str-01";
+                    $days_in_month = cal_days_in_month(CAL_GREGORIAN, $month, $year);
+                    $end_date = "$year-$month_str-" . str_pad($days_in_month, 2, '0', STR_PAD_LEFT);
+
+                    $stmt_clear = $pdo->prepare("DELETE FROM monthly_roster WHERE date BETWEEN ? AND ?");
+                    $stmt_clear->execute([$start_date, $end_date]);
+
+                    $state_data = json_decode($state_json, true);
+                    $stmt_ins = $pdo->prepare("INSERT INTO monthly_roster (emp_id, date, shift_code, is_emergency_swap, swapped_with_emp_id) VALUES (?, ?, ?, ?, ?)");
+                    foreach ($state_data as $row) {
+                        $stmt_ins->execute([$row['emp_id'], $row['date'], $row['shift_code'], $row['is_emergency_swap'], $row['swapped_with_emp_id']]);
+                    }
+
+                    $pdo->commit();
+                    $_SESSION['roster_history_index'][$year][$month] = $new_idx;
+
+                    $stmt_max = $pdo->prepare("SELECT MAX(history_index) FROM roster_history WHERE year = ? AND month = ?");
+                    $stmt_max->execute([$year, $month]);
+                    $max_idx = (int)$stmt_max->fetchColumn();
+
+                    echo json_encode([
+                        'success' => true, 
+                        'message' => 'Undo successful.',
+                        'can_undo' => $new_idx > 0,
+                        'can_redo' => $new_idx < $max_idx
+                    ]);
+                    exit;
+                }
+            }
+            echo json_encode(['success' => false, 'message' => 'Nothing to undo.']);
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        }
+        break;
+
+    case 'redo':
+        try {
+            $year = (int)($_POST['year'] ?? date('Y'));
+            $month = (int)($_POST['month'] ?? date('m'));
+
+            ensureInitialStateInHistory($pdo, $year, $month);
+            $current_idx = $_SESSION['roster_history_index'][$year][$month];
+
+            $stmt_max = $pdo->prepare("SELECT MAX(history_index) FROM roster_history WHERE year = ? AND month = ?");
+            $stmt_max->execute([$year, $month]);
+            $max_idx = (int)$stmt_max->fetchColumn();
+
+            if ($current_idx < $max_idx) {
+                $new_idx = $current_idx + 1;
+                
+                // Get state
+                $stmt = $pdo->prepare("SELECT state_json FROM roster_history WHERE year = ? AND month = ? AND history_index = ?");
+                $stmt->execute([$year, $month, $new_idx]);
+                $state_json = $stmt->fetchColumn();
+
+                if ($state_json !== false) {
+                    $pdo->beginTransaction();
+
+                    $month_str = str_pad($month, 2, '0', STR_PAD_LEFT);
+                    $start_date = "$year-$month_str-01";
+                    $days_in_month = cal_days_in_month(CAL_GREGORIAN, $month, $year);
+                    $end_date = "$year-$month_str-" . str_pad($days_in_month, 2, '0', STR_PAD_LEFT);
+
+                    $stmt_clear = $pdo->prepare("DELETE FROM monthly_roster WHERE date BETWEEN ? AND ?");
+                    $stmt_clear->execute([$start_date, $end_date]);
+
+                    $state_data = json_decode($state_json, true);
+                    $stmt_ins = $pdo->prepare("INSERT INTO monthly_roster (emp_id, date, shift_code, is_emergency_swap, swapped_with_emp_id) VALUES (?, ?, ?, ?, ?)");
+                    foreach ($state_data as $row) {
+                        $stmt_ins->execute([$row['emp_id'], $row['date'], $row['shift_code'], $row['is_emergency_swap'], $row['swapped_with_emp_id']]);
+                    }
+
+                    $pdo->commit();
+                    $_SESSION['roster_history_index'][$year][$month] = $new_idx;
+
+                    echo json_encode([
+                        'success' => true, 
+                        'message' => 'Redo successful.',
+                        'can_undo' => $new_idx > 0,
+                        'can_redo' => $new_idx < $max_idx
+                    ]);
+                    exit;
+                }
+            }
+            echo json_encode(['success' => false, 'message' => 'Nothing to redo.']);
         } catch (Exception $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
             echo json_encode(['success' => false, 'message' => $e->getMessage()]);

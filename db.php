@@ -59,4 +59,61 @@ try {
      echo json_encode(['success' => false, 'message' => 'Connection failed: ' . $e->getMessage()]);
      exit;
 }
+
+function ensureInitialStateInHistory($pdo, $year, $month) {
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+    if (!isset($_SESSION['roster_history_index'][$year][$month])) {
+        $stmt_count = $pdo->prepare("SELECT COUNT(*) FROM roster_history WHERE year = ? AND month = ?");
+        $stmt_count->execute([$year, $month]);
+        if ($stmt_count->fetchColumn() == 0) {
+            $month_str = str_pad($month, 2, '0', STR_PAD_LEFT);
+            $start_date = "$year-$month_str-01";
+            $days_in_month = cal_days_in_month(CAL_GREGORIAN, $month, $year);
+            $end_date = "$year-$month_str-" . str_pad($days_in_month, 2, '0', STR_PAD_LEFT);
+
+            $stmt = $pdo->prepare("SELECT emp_id, date, shift_code, is_emergency_swap, swapped_with_emp_id FROM monthly_roster WHERE date BETWEEN ? AND ?");
+            $stmt->execute([$start_date, $end_date]);
+            $current_state = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $state_json = json_encode($current_state);
+
+            $stmt_ins = $pdo->prepare("INSERT INTO roster_history (year, month, history_index, state_json) VALUES (?, ?, 0, ?)");
+            $stmt_ins->execute([$year, $month, $state_json]);
+            $_SESSION['roster_history_index'][$year][$month] = 0;
+        } else {
+            $stmt_max = $pdo->prepare("SELECT MAX(history_index) FROM roster_history WHERE year = ? AND month = ?");
+            $stmt_max->execute([$year, $month]);
+            $_SESSION['roster_history_index'][$year][$month] = (int)$stmt_max->fetchColumn();
+        }
+    }
+}
+
+function saveRosterStateToHistory($pdo, $year, $month) {
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+    ensureInitialStateInHistory($pdo, $year, $month);
+
+    $month_str = str_pad($month, 2, '0', STR_PAD_LEFT);
+    $start_date = "$year-$month_str-01";
+    $days_in_month = cal_days_in_month(CAL_GREGORIAN, $month, $year);
+    $end_date = "$year-$month_str-" . str_pad($days_in_month, 2, '0', STR_PAD_LEFT);
+
+    $stmt = $pdo->prepare("SELECT emp_id, date, shift_code, is_emergency_swap, swapped_with_emp_id FROM monthly_roster WHERE date BETWEEN ? AND ?");
+    $stmt->execute([$start_date, $end_date]);
+    $current_state = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $state_json = json_encode($current_state);
+
+    $current_idx = $_SESSION['roster_history_index'][$year][$month];
+
+    $stmt_del = $pdo->prepare("DELETE FROM roster_history WHERE year = ? AND month = ? AND history_index > ?");
+    $stmt_del->execute([$year, $month, $current_idx]);
+
+    $new_idx = $current_idx + 1;
+    $stmt_ins = $pdo->prepare("INSERT INTO roster_history (year, month, history_index, state_json) VALUES (?, ?, ?, ?)");
+    $stmt_ins->execute([$year, $month, $new_idx, $state_json]);
+
+    $_SESSION['roster_history_index'][$year][$month] = $new_idx;
+}
 ?>
