@@ -416,36 +416,24 @@ function solveRosterJoint($day_idx, $calendar_days, $employees, &$roster, &$off_
     foreach ($employees as $emp) {
         $emp_id = $emp['emp_id'];
         $role = isset($emp['role']) ? $emp['role'] : 'Rotating';
-        $needed = 4 - ($off_counts[$emp_id] ?? 0);
+        
+        $remaining_leaves_count = 0;
+        for ($i = $day_idx; $i < count($calendar_days); $i++) {
+            if (isset($approved_leaves[$emp_id][$calendar_days[$i]['date']])) $remaining_leaves_count++;
+        }
+        $available_offs = 4 - ($off_counts[$emp_id] ?? 0) - $remaining_leaves_count;
+
+        $fatigue_off = false;
+        if ($role === 'Rotating') {
+            $prev_shift = $prev_date ? ($roster[$emp_id][$prev_date] ?? null) : null;
+            $prev_prev_shift = $prev_prev_date ? ($roster[$emp_id][$prev_prev_date] ?? null) : null;
+            if (in_array($prev_shift, ['N', 'Nw']) && in_array($prev_prev_shift, ['N', 'Nw'])) $fatigue_off = true;
+        }
 
         if (isset($approved_leaves[$emp_id][$date])) {
             $forced_off[] = $emp_id;
-        } elseif ($needed > 0) {
-            $remaining_leaves_count = 0;
-            for ($i = $day_idx; $i < count($calendar_days); $i++) {
-                if (isset($approved_leaves[$emp_id][$calendar_days[$i]['date']])) $remaining_leaves_count++;
-            }
-            $needed_scheduled = $needed - $remaining_leaves_count;
-            
-            $fatigue_off = false;
-            if ($role === 'Rotating') {
-                $prev_shift = $prev_date ? ($roster[$emp_id][$prev_date] ?? null) : null;
-                $prev_prev_shift = $prev_prev_date ? ($roster[$emp_id][$prev_prev_date] ?? null) : null;
-                if (in_array($prev_shift, ['N', 'Nw']) && in_array($prev_prev_shift, ['N', 'Nw'])) $fatigue_off = true;
-            }
-
-            if ($days_remaining < $needed_scheduled) {
-                if ($relaxation_level >= 3) {
-                    $forced_off[] = $emp_id; 
-                } else {
-                    $deepest_fail_reason = "Day " . ($day_idx + 1) . " - {$emp['name']} needs {$needed_scheduled} off days but only {$days_remaining} days left.";
-                    return false;
-                }
-            }
-
-            if ($days_remaining <= $needed_scheduled && $needed_scheduled > 0) $forced_off[] = $emp_id;
-            elseif ($fatigue_off && $needed_scheduled > 0) $forced_off[] = $emp_id; 
-            else if ($needed_scheduled > 0) $candidate_off[] = $emp_id;
+        } elseif ($fatigue_off && $available_offs > 0) {
+            $forced_off[] = $emp_id;
         }
     }
 
@@ -559,7 +547,15 @@ function solveRosterJoint($day_idx, $calendar_days, $employees, &$roster, &$off_
                 $temp_roster[$emp_id] = 'F';
             } elseif ($role === 'Cashier') {
                 $day_of_week = date('N', strtotime($date));
-                $temp_roster[$emp_id] = ($day_of_week == 3 || $day_of_week == 5) ? 'Nh' : 'No';
+                if ($day_of_week == 3 || $day_of_week == 5) {
+                    $nh_count = 0;
+                    for ($d = 0; $d < $day_idx; $d++) {
+                        if (($roster[$emp_id][$calendar_days[$d]['date']] ?? null) === 'Nh') $nh_count++;
+                    }
+                    $temp_roster[$emp_id] = ($nh_count < 5) ? 'Nh' : 'No';
+                } else {
+                    $temp_roster[$emp_id] = 'No';
+                }
             } elseif ($role === 'Assistant_Manager') {
                 $day_of_week = (int)date('N', strtotime($date));
                 $temp_roster[$emp_id] = in_array($day_of_week, [1, 3, 5]) ? ($is_weekend_or_holiday ? 'Mw' : 'M') : 'F';

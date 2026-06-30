@@ -382,7 +382,7 @@ document.addEventListener('DOMContentLoaded', () => {
             card.setAttribute('data-id', emp.emp_id);
             
             const count = getEmployeeLeaveCount(emp.emp_id);
-            const countClass = count >= 4 ? 'badge-success' : 'badge-normal';
+            const countClass = (4 - count) <= 0 ? 'badge-success' : 'badge-normal';
             let formattedRole = emp.role ? emp.role.replace('_', ' ') : 'Rotating';
 
             card.innerHTML = `
@@ -392,7 +392,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         ${formattedRole}
                     </div>
                 </div>
-                <span class="employee-leaves-badge ${countClass}" id="leave-badge-${emp.emp_id}" style="box-shadow: 0 1px 2px rgba(0,0,0,0.05);">${count}/4 Off</span>
+                <span class="employee-leaves-badge ${countClass}" id="leave-badge-${emp.emp_id}" style="box-shadow: 0 1px 2px rgba(0,0,0,0.05);">Available: ${4 - count}</span>
             `;
 
             card.addEventListener('click', () => {
@@ -421,8 +421,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const badge = document.getElementById(`leave-badge-${emp.emp_id}`);
             if (badge) {
                 const count = getEmployeeLeaveCount(emp.emp_id);
-                badge.textContent = `${count}/4 Off`;
-                badge.className = `employee-leaves-badge ${count >= 4 ? 'badge-success' : 'badge-normal'}`;
+                badge.textContent = `Available: ${4 - count}`;
+                badge.className = `employee-leaves-badge ${(4 - count) <= 0 ? 'badge-success' : 'badge-normal'}`;
             }
         });
     }
