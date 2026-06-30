@@ -546,29 +546,30 @@ function solveRosterJoint($day_idx, $calendar_days, $employees, &$roster, &$off_
             if ($role === 'Anchor') {
                 $temp_roster[$emp_id] = 'F';
             } elseif ($role === 'Cashier') {
-                $day_of_week = date('N', strtotime($date));
-                if ($day_of_week == 3 || $day_of_week == 5) {
+                $day_of_week = (int)date('N', strtotime($date));
+                
+                $am_working_full = false;
+                if (!in_array($day_of_week, [1, 3, 5])) {
+                    $am_id = null;
+                    foreach ($employees as $e) {
+                        if (($e['role'] ?? '') === 'Assistant_Manager') {
+                            $am_id = $e['emp_id'];
+                            break;
+                        }
+                    }
+                    if ($am_id !== null && !in_array($am_id, $off_group)) {
+                        $am_working_full = true;
+                    }
+                }
+
+                $is_valid_nh_day = !$is_weekend_or_holiday && in_array($day_of_week, [2, 4]) && $am_working_full;
+
+                if ($is_valid_nh_day) {
                     $nh_count = 0;
                     for ($d = 0; $d < $day_idx; $d++) {
                         if (($roster[$emp_id][$calendar_days[$d]['date']] ?? null) === 'Nh') $nh_count++;
                     }
-                    
-                    $asst_mgr_works_full = false;
-                    foreach ($employees as $am_emp) {
-                        if (($am_emp['role'] ?? '') === 'Assistant_Manager') {
-                            $am_id = $am_emp['emp_id'];
-                            if (!in_array($am_id, $off_group)) {
-                                $am_day_of_week = (int)date('N', strtotime($date));
-                                $am_shift = in_array($am_day_of_week, [1, 3, 5]) ? ($is_weekend_or_holiday ? 'Mw' : 'M') : 'F';
-                                if ($am_shift === 'F') {
-                                    $asst_mgr_works_full = true;
-                                }
-                            }
-                            break;
-                        }
-                    }
-                    
-                    $temp_roster[$emp_id] = ($nh_count < 5 && $asst_mgr_works_full) ? 'Nh' : 'No';
+                    $temp_roster[$emp_id] = ($nh_count < 5) ? 'Nh' : 'No';
                 } else {
                     $temp_roster[$emp_id] = 'No';
                 }
