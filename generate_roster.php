@@ -276,11 +276,7 @@ function solveRotatingShifts($idx, $working_rotating, $day_idx, $calendar_days, 
         $opts = ['F'];
         if ($nw_count_so_far < 4) $opts[] = 'Nw'; 
     } else {
-        if ($relaxation_level < 3) {
-            $opts = ['F'];
-        } else {
-            $opts = [$morning_code, $night_code, 'F'];
-        }
+        $opts = [$morning_code, $night_code, 'F']; 
     }
 
     $final_opts = [];
@@ -458,20 +454,6 @@ function solveRosterJoint($day_idx, $calendar_days, $employees, &$roster, &$off_
     foreach ($combinations as $combo) {
         $group = array_merge($forced_off, $combo);
         if (count($group) > $max_off) continue;
-
-        // Try to always keep at least 5 target group employees working (Target group size = 8. At most 3 can be Off.)
-        // Exclude Manager, Assistant Manager, and Cashier from this calculation.
-        $target_group_off_count = 0;
-        foreach ($group as $eid) {
-            $r = isset($emp_lookup[$eid]['role']) ? $emp_lookup[$eid]['role'] : 'Rotating';
-            if ($r !== 'Manager' && $r !== 'Assistant_Manager' && $r !== 'Cashier') {
-                $target_group_off_count++;
-            }
-        }
-        if ($relaxation_level < 2 && $target_group_off_count > 3) {
-            continue;
-        }
-
         $valid_off_groups[] = $group;
     }
 
