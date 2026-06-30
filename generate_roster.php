@@ -389,7 +389,8 @@ function solveRosterJoint($day_idx, $calendar_days, $employees, &$roster, &$off_
     $emp_lookup = [];
     foreach ($employees as $e) $emp_lookup[$e['emp_id']] = $e;
 
-    $forced_off = []; $candidate_off = []; $last_off_dist = [];
+    // Calculate last off distances
+    $last_off_dist = [];
     foreach ($employees as $emp) {
         $eid = $emp['emp_id']; $last_off = -1;
         for ($d = $day_idx - 1; $d >= 0; $d--) {
@@ -398,197 +399,178 @@ function solveRosterJoint($day_idx, $calendar_days, $employees, &$roster, &$off_
         $last_off_dist[$eid] = ($last_off === -1) ? ($day_idx + 1) : ($day_idx - $last_off);
     }
 
+    // Partition into Office Employees and Non-Office Employees
+    $office_employees = [];
+    $non_office_employees = [];
     foreach ($employees as $emp) {
-        $emp_id = $emp['emp_id'];
         $role = isset($emp['role']) ? $emp['role'] : 'Rotating';
-        $needed = 4 - ($off_counts[$emp_id] ?? 0);
+        if (!in_array($role, ['Manager', 'Assistant_Manager', 'Cashier'])) {
+            $office_employees[] = $emp;
+        } else {
+            $non_office_employees[] = $emp;
+        }
+    }
 
-        if (isset($approved_leaves[$emp_id][$date])) {
-            $forced_off[] = $emp_id;
-        } elseif ($needed > 0) {
+    // Determine Off group for Office Employees:
+    // We want exactly 5 to work.
+    $off_needed_office = count($office_employees) - 5;
+    if ($off_needed_office < 0) $off_needed_office = 0;
+
+    $forced_off_office = [];
+    $candidate_off_office = [];
+    foreach ($office_employees as $emp) {
+        $eid = $emp['emp_id'];
+        $needed = 4 - ($off_counts[$eid] ?? 0);
+        
+        if (isset($approved_leaves[$eid][$date])) {
+            $forced_off_office[] = $eid;
+        } else {
             $remaining_leaves_count = 0;
             for ($i = $day_idx; $i < count($calendar_days); $i++) {
-                if (isset($approved_leaves[$emp_id][$calendar_days[$i]['date']])) $remaining_leaves_count++;
+                if (isset($approved_leaves[$eid][$calendar_days[$i]['date']])) $remaining_leaves_count++;
             }
             $needed_scheduled = $needed - $remaining_leaves_count;
             
-            $fatigue_off = false;
-            if ($role === 'Rotating') {
-                $prev_shift = $prev_date ? ($roster[$emp_id][$prev_date] ?? null) : null;
-                $prev_prev_shift = $prev_prev_date ? ($roster[$emp_id][$prev_prev_date] ?? null) : null;
-                if (in_array($prev_shift, ['N', 'Nw']) && in_array($prev_prev_shift, ['N', 'Nw'])) $fatigue_off = true;
+            if ($days_remaining <= $needed_scheduled && $needed_scheduled > 0) {
+                $forced_off_office[] = $eid;
+            } else {
+                $candidate_off_office[] = [
+                    'emp_id' => $eid,
+                    'off_count' => $off_counts[$eid] ?? 0,
+                    'last_off_dist' => $last_off_dist[$eid]
+                ];
             }
-
-            if ($days_remaining < $needed_scheduled) {
-                if ($relaxation_level >= 3) {
-                    $forced_off[] = $emp_id; 
-                } else {
-                    $deepest_fail_reason = "Day " . ($day_idx + 1) . " - {$emp['name']} needs {$needed_scheduled} off days but only {$days_remaining} days left.";
-                    return false;
-                }
-            }
-
-            if ($days_remaining <= $needed_scheduled && $needed_scheduled > 0) $forced_off[] = $emp_id;
-            elseif ($fatigue_off) $forced_off[] = $emp_id; 
-            else if (($off_counts[$emp_id] ?? 0) < 4) $candidate_off[] = $emp_id;
         }
     }
 
-    $max_off = max(($relaxation_level >= 1 ? 6 : 5), count($forced_off)); 
-    if ($relaxation_level >= 3) $max_off = max(10, count($forced_off)); 
-
-    if (count($candidate_off) > 8) {
-        usort($candidate_off, fn($a, $b) => $last_off_dist[$b] <=> $last_off_dist[$a]);
-        $candidate_off = array_slice($candidate_off, 0, 8);
+    $selected_off_office = $forced_off_office;
+    if (count($selected_off_office) < $off_needed_office && !empty($candidate_off_office)) {
+        // Sort office candidates to keep off days balanced:
+        // 1. Lower off_count first
+        // 2. Higher last_off_dist first
+        usort($candidate_off_office, function($a, $b) {
+            if ($a['off_count'] !== $b['off_count']) {
+                return $a['off_count'] <=> $b['off_count'];
+            }
+            return $b['last_off_dist'] <=> $a['last_off_dist'];
+        });
+        
+        $additional_needed = $off_needed_office - count($selected_off_office);
+        $added = array_slice($candidate_off_office, 0, $additional_needed);
+        foreach ($added as $cand) {
+            $selected_off_office[] = $cand['emp_id'];
+        }
     }
 
-    $max_extra_off = $max_off - count($forced_off);
-    $combinations = [[]];
-    foreach ($candidate_off as $cand) {
+    // Determine Off/forced-off for Non-Office Employees:
+    $forced_off_non_office = [];
+    $candidate_off_non_office = [];
+    foreach ($non_office_employees as $emp) {
+        $eid = $emp['emp_id'];
+        $needed = 4 - ($off_counts[$eid] ?? 0);
+        
+        if (isset($approved_leaves[$eid][$date])) {
+            $forced_off_non_office[] = $eid;
+        } else {
+            $remaining_leaves_count = 0;
+            for ($i = $day_idx; $i < count($calendar_days); $i++) {
+                if (isset($approved_leaves[$eid][$calendar_days[$i]['date']])) $remaining_leaves_count++;
+            }
+            $needed_scheduled = $needed - $remaining_leaves_count;
+            
+            if ($days_remaining <= $needed_scheduled && $needed_scheduled > 0) {
+                $forced_off_non_office[] = $eid;
+            } else if (($off_counts[$eid] ?? 0) < 4) {
+                $candidate_off_non_office[] = [
+                    'emp_id' => $eid,
+                    'off_count' => $off_counts[$eid] ?? 0,
+                    'last_off_dist' => $last_off_dist[$eid]
+                ];
+            }
+        }
+    }
+
+    // Generate combinations of off days for non-office staff
+    $combinations_non_office = [[]];
+    foreach ($candidate_off_non_office as $cand) {
         $new_combos = [];
-        foreach ($combinations as $combo) if (count($combo) < $max_extra_off) $new_combos[] = array_merge($combo, [$cand]);
-        $combinations = array_merge($combinations, $new_combos);
-    }
-
-    $valid_off_groups = [];
-    foreach ($combinations as $combo) {
-        $group = array_merge($forced_off, $combo);
-        if (count($group) > $max_off) continue;
-        $valid_off_groups[] = $group;
-    }
-
-    $filtered_groups = [];
-    foreach ($valid_off_groups as $group) {
-        $has_cashier = false; $has_asst_mgr = false;
-        foreach ($group as $eid) {
-            $r = isset($emp_lookup[$eid]['role']) ? $emp_lookup[$eid]['role'] : 'Rotating'; 
-            if ($r === 'Cashier') $has_cashier = true;
-            if ($r === 'Assistant_Manager') $has_asst_mgr = true;
+        foreach ($combinations_non_office as $combo) {
+            $new_combos[] = array_merge($combo, [$cand['emp_id']]);
         }
-        if (!($has_cashier && $has_asst_mgr)) {
-            $filtered_groups[] = $group;
+        $combinations_non_office = array_merge($combinations_non_office, $new_combos);
+    }
+    
+    $valid_non_office_off_groups = [];
+    foreach ($combinations_non_office as $combo) {
+        $group = array_merge($forced_off_non_office, $combo);
+        
+        // Assistant Manager and Cashier cannot be off at the same time
+        $has_cashier_off = false;
+        $has_asst_mgr_off = false;
+        
+        foreach ($group as $eid) {
+            $role = isset($emp_lookup[$eid]['role']) ? $emp_lookup[$eid]['role'] : '';
+            if ($role === 'Cashier') $has_cashier_off = true;
+            if ($role === 'Assistant_Manager') $has_asst_mgr_off = true;
+        }
+        
+        if (!($has_cashier_off && $has_asst_mgr_off)) {
+            $valid_non_office_off_groups[] = $group;
         }
     }
     
-    if (!empty($filtered_groups)) {
-        $valid_off_groups = $filtered_groups;
+    if (empty($valid_non_office_off_groups)) {
+        $valid_non_office_off_groups = [$forced_off_non_office];
     }
-
-    if (empty($valid_off_groups)) {
-        if ($relaxation_level >= 3) {
-            $valid_off_groups = [$forced_off]; 
-        } else {
-            $deepest_fail_reason = "Day " . ($day_idx + 1) . " - Mathematical deadlock forming Off-Groups (Forced off exceeds maximum limit).";
-            return false;
-        }
-    }
-
-    $target_size = 2; 
-    shuffle($valid_off_groups);
-    usort($valid_off_groups, function($a, $b) use ($off_counts, $target_size, $last_off_dist) {
-        $pA = abs(count($a) - $target_size); $pB = abs(count($b) - $target_size);
-        if (abs($pA - $pB) > 0.01) return $pA <=> $pB;
-        $sA = 0; foreach ($a as $e) $sA += (4 - ($off_counts[$e] ?? 0));
-        $sB = 0; foreach ($b as $e) $sB += (4 - ($off_counts[$e] ?? 0));
-        if ($sA !== $sB) return $sB <=> $sA;
-        $dA = 0; foreach ($a as $e) $dA += $last_off_dist[$e];
-        $dB = 0; foreach ($b as $e) $dB += $last_off_dist[$e];
-        if ($dA !== $dB) return $dB <=> $dA;
-        return max($b ?: [0]) <=> max($a ?: [0]);
+    
+    // Sort to prioritize smaller off groups for non-office to keep coverage high
+    usort($valid_non_office_off_groups, function($a, $b) {
+        return count($a) <=> count($b);
     });
 
-    $valid_off_groups = array_slice($valid_off_groups, 0, 4);
-
-    foreach ($valid_off_groups as $off_group) {
+    // Try each combined off group
+    foreach ($valid_non_office_off_groups as $non_office_off_group) {
+        $off_group = array_merge($selected_off_office, $non_office_off_group);
+        
         foreach ($off_group as $eid) $roster[$eid][$date] = 'Off';
-
-        $temp_roster = []; $working_rotating = [];
-
+        
+        $temp_roster = [];
+        $working_rotating = [];
+        
         foreach ($employees as $emp) {
             $emp_id = $emp['emp_id'];
             if (in_array($emp_id, $off_group)) continue;
             
             $role = isset($emp['role']) ? $emp['role'] : 'Rotating';
-            if ($role === 'Anchor') {
+            
+            if (!in_array($role, ['Manager', 'Assistant_Manager', 'Cashier'])) {
+                // Office Employee: Must be assigned 'F' (Full Day)
                 $temp_roster[$emp_id] = 'F';
-            } elseif ($role === 'Cashier') {
-                // Cashier limit: Exactly/Max 5 Nh shifts
-                $day_of_week = (int)date('N', strtotime($date));
-                $nh_count = 0;
-                for ($d = 0; $d < $day_idx; $d++) {
-                    if (($roster[$emp_id][$calendar_days[$d]['date']] ?? null) === 'Nh') $nh_count++;
-                }
-                $temp_roster[$emp_id] = (in_array($day_of_week, [3, 5]) && $nh_count < 5) ? 'Nh' : 'No';
-            } elseif ($role === 'Assistant_Manager') {
-                $day_of_week = (int)date('N', strtotime($date));
-                $temp_roster[$emp_id] = in_array($day_of_week, [1, 3, 5]) ? ($is_weekend_or_holiday ? 'Mw' : 'M') : 'F';
             } else {
-                $working_rotating[] = $emp;
+                if ($role === 'Cashier') {
+                    $day_of_week = (int)date('N', strtotime($date));
+                    $nh_count = 0;
+                    for ($d = 0; $d < $day_idx; $d++) {
+                        if (($roster[$emp_id][$calendar_days[$d]['date']] ?? null) === 'Nh') $nh_count++;
+                    }
+                    $temp_roster[$emp_id] = (in_array($day_of_week, [3, 5]) && $nh_count < 5) ? 'Nh' : 'No';
+                } elseif ($role === 'Assistant_Manager') {
+                    // Assistant Manager assignment
+                    $day_of_week = (int)date('N', strtotime($date));
+                    $temp_roster[$emp_id] = in_array($day_of_week, [1, 3, 5]) ? ($is_weekend_or_holiday ? 'Mw' : 'M') : 'F';
+                } else {
+                    $working_rotating[] = $emp;
+                }
             }
         }
 
-        // --- PRE-CALCULATE HISTORICAL METRICS FOR ROTATING STAFF (Shift balancing & Weekend Alternation) ---
-        $emp_history = [];
-        foreach ($working_rotating as $emp) {
-            $eid = $emp['emp_id'];
-            $m_cnt = 0; $n_cnt = 0; $f_cnt = 0;
-            $weekend_shifts = [];
-            
-            for ($d = 0; $d < $day_idx; $d++) {
-                $s = $roster[$eid][$calendar_days[$d]['date']] ?? null;
-                if (in_array($s, ['M', 'Mw'])) $m_cnt++;
-                if (in_array($s, ['N', 'Nw'])) $n_cnt++;
-                if ($s === 'F') $f_cnt++;
-                
-                if ($calendar_days[$d]['day_type'] !== 'Weekday' && in_array($s, ['M', 'Mw', 'N', 'Nw', 'F'])) {
-                    // Group ISO week to handle consecutive weekend days together
-                    $week_key = date('Y-W', strtotime($calendar_days[$d]['date']));
-                    $weekend_shifts[$week_key][] = $s;
-                }
-            }
-            
-            $current_week = date('Y-W', strtotime($date));
-            $last_week_shift = null;
-            $this_week_shift = null;
-            
-            if (isset($weekend_shifts[$current_week])) {
-                foreach ($weekend_shifts[$current_week] as $s) {
-                    if (in_array($s, ['M', 'Mw'])) { $this_week_shift = 'M'; break; }
-                    if (in_array($s, ['N', 'Nw'])) { $this_week_shift = 'N'; break; }
-                }
-            }
-            
-            $past_weeks = array_keys($weekend_shifts);
-            rsort($past_weeks); 
-            foreach ($past_weeks as $w) {
-                if ($w !== $current_week) {
-                    $wm = 0; $wn = 0;
-                    foreach ($weekend_shifts[$w] as $s) {
-                        if (in_array($s, ['M', 'Mw'])) $wm++;
-                        if (in_array($s, ['N', 'Nw'])) $wn++;
-                    }
-                    if ($wm > 0 || $wn > 0) {
-                        $last_week_shift = ($wm >= $wn) ? 'M' : 'N';
-                        break;
-                    }
-                }
-            }
-            
-            $emp_history[$eid] = [
-                'm_cnt' => $m_cnt,
-                'n_cnt' => $n_cnt,
-                'f_cnt' => $f_cnt,
-                'this_week_shift' => $this_week_shift,
-                'last_week_shift' => $last_week_shift
-            ];
-        }
-
+        // Calculate max stats for solver bounds
         $max_m_males = 0; $max_n_males = 0; $max_m_females = 0; $max_n_females = 0;
         $max_m_good = 0; $max_n_good = 0; $max_m_total = 0; $max_n_total = 0;
 
         foreach ($temp_roster as $eid => $sc) {
-            $gender = null; $skill = null;
-            foreach ($employees as $e) { if ($e['emp_id'] == $eid) { $gender = $e['gender']; $skill = $e['skill_level']; break; } }
+            $gender = $emp_lookup[$eid]['gender'] ?? 'Female';
+            $skill = $emp_lookup[$eid]['skill_level'] ?? 'Normal';
             if (in_array($sc, ['M', 'Mw', 'F', 'No', 'Nh'])) {
                 if ($gender === 'Male') $max_m_males++; else $max_m_females++;
                 if ($skill === 'Good') $max_m_good++; $max_m_total++;
@@ -649,8 +631,8 @@ function solveRosterJoint($day_idx, $calendar_days, $employees, &$roster, &$off_
         
         foreach ($temp_roster as $eid => $sc) {
             $roster[$eid][$date] = $sc;
-            $gender = null; $skill = null;
-            foreach ($employees as $e) { if ($e['emp_id'] == $eid) { $gender = $e['gender']; $skill = $e['skill_level']; break; } }
+            $gender = $emp_lookup[$eid]['gender'] ?? 'Female';
+            $skill = $emp_lookup[$eid]['skill_level'] ?? 'Normal';
             if (in_array($sc, ['M', 'Mw', 'F', 'No', 'Nh'])) {
                 if ($gender === 'Male') $counts['morning_males']++; else $counts['morning_females']++;
                 if ($skill === 'Good') $counts['morning_good']++; $counts['morning_total']++;
@@ -662,6 +644,27 @@ function solveRosterJoint($day_idx, $calendar_days, $employees, &$roster, &$off_
         }
 
         $valid_choices = []; $found_count = 0; 
+        
+        // Pre-calculate history for AM/Manager choices scoring
+        $emp_history = [];
+        foreach ($working_rotating as $emp) {
+            $eid = $emp['emp_id'];
+            $m_cnt = 0; $n_cnt = 0; $f_cnt = 0;
+            for ($d = 0; $d < $day_idx; $d++) {
+                $s = $roster[$eid][$calendar_days[$d]['date']] ?? null;
+                if (in_array($s, ['M', 'Mw'])) $m_cnt++;
+                if (in_array($s, ['N', 'Nw'])) $n_cnt++;
+                if ($s === 'F') $f_cnt++;
+            }
+            $emp_history[$eid] = [
+                'm_cnt' => $m_cnt,
+                'n_cnt' => $n_cnt,
+                'f_cnt' => $f_cnt,
+                'this_week_shift' => null,
+                'last_week_shift' => null
+            ];
+        }
+
         solveRotatingShifts(0, $working_rotating, $day_idx, $calendar_days, $roster, $employees, $counts, $off_counts, $valid_choices, $req, $found_count, $relaxation_level);
 
         if (!empty($valid_choices)) {
@@ -676,69 +679,15 @@ function solveRosterJoint($day_idx, $calendar_days, $employees, &$roster, &$off_
                     if (in_array($sc, ['N', 'Nw', 'F'])) $day_n++;
                     
                     $role = isset($emp_lookup[$emp_id]['role']) ? $emp_lookup[$emp_id]['role'] : 'Rotating'; 
-                    $prev_shift = $roster[$emp_id][$prev_date] ?? null;
-                    $prev_prev_shift = $roster[$emp_id][$prev_prev_date] ?? null;
-                    $consecutive_count = ($sc === $prev_shift && $prev_shift !== null && $prev_shift !== 'Off') ? 1 : 0;
-
-                    if ($role === 'Rotating') {
-                        $history = $emp_history[$emp_id] ?? null;
-                        
-                        if ($history) {
-                            // BALANCE SHIFT COUNTS: Heavily penalize picking a shift they already have too many of
-                            if (in_array($sc, ['M', 'Mw'])) $score -= ($history['m_cnt'] * 4);
-                            if (in_array($sc, ['N', 'Nw'])) $score -= ($history['n_cnt'] * 4);
-                            if ($sc === 'F') $score -= ($history['f_cnt'] * 6);
-                            
-                            // ALTERNATE WEEKEND SHIFTS
-                            if ($is_weekend_or_holiday) {
-                                $is_m_type = in_array($sc, ['M', 'Mw']);
-                                $is_n_type = in_array($sc, ['N', 'Nw']);
-                                
-                                if ($history['this_week_shift']) {
-                                    // Ensure Saturday and Sunday are the same shift (consistent weekend block)
-                                    if ($history['this_week_shift'] === 'M' && $is_m_type) $score += 30;
-                                    if ($history['this_week_shift'] === 'N' && $is_n_type) $score += 30;
-                                    if ($history['this_week_shift'] === 'M' && $is_n_type) $score -= 40;
-                                    if ($history['this_week_shift'] === 'N' && $is_m_type) $score -= 40;
-                                } else if ($history['last_week_shift']) {
-                                    // Force opposite shift from their previous weekend
-                                    if ($history['last_week_shift'] === 'M') {
-                                        if ($is_n_type) $score += 50; 
-                                        if ($is_m_type) $score -= 50; 
-                                    } else if ($history['last_week_shift'] === 'N') {
-                                        if ($is_m_type) $score += 50; 
-                                        if ($is_n_type) $score -= 50; 
-                                    }
-                                }
-                            }
-                        }
-
-                        // Hard Block override penalties
-                        if ($relaxation_level >= 3) {
-                            if (in_array($sc, ['M', 'Mw', 'F']) && in_array($prev_shift, ['N', 'Nw'])) $score -= 200; 
-                            if (in_array($sc, ['N', 'Nw']) && in_array($prev_shift, ['N', 'Nw']) && in_array($prev_prev_shift, ['N', 'Nw'])) $score -= 200; 
-                        }
-                        
-                        // General Fatigue
-                        if (in_array($sc, ['N', 'Nw'])) {
-                            if ($consecutive_count == 1) $score -= 20; 
-                            if (in_array($prev_shift, ['M', 'Mw'])) $score += 25; 
-                            if ($prev_shift === 'Off') $score += 10; 
-                        }
-                        if (in_array($sc, ['M', 'Mw'])) {
-                            if ($consecutive_count == 1) $score -= 5; 
-                            if ($prev_shift === 'Off') $score += 30; 
-                        }
-                        if ($sc === 'F') {
-                            $score -= 15; 
-                            if ($prev_shift === 'F') $score -= 40; 
-                        }
-                    } elseif ($role === 'Manager') {
-                        if ($sc === 'Nw') $score -= 5; 
+                    $history = $emp_history[$emp_id] ?? null;
+                    if ($history) {
+                        if (in_array($sc, ['M', 'Mw'])) $score -= ($history['m_cnt'] * 4);
+                        if (in_array($sc, ['N', 'Nw'])) $score -= ($history['n_cnt'] * 4);
+                        if ($sc === 'F') $score -= ($history['f_cnt'] * 6);
                     }
                 }
                 
-                $score -= abs($day_m - $day_n) * 20; // Maintain absolute floor balance
+                $score -= abs($day_m - $day_n) * 20; 
                 $scored_choices[] = ['choice' => $choice, 'score' => $score];
             }
             
