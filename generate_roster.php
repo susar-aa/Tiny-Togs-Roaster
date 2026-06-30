@@ -324,15 +324,18 @@ function solveRotatingShifts($idx, $working_rotating, $day_idx, $calendar_days, 
         $added_morning = in_array($sc, ['M', 'Mw', 'F']);
         $added_night = in_array($sc, ['N', 'Nw', 'F']);
         
+        $is_floor = in_array($role, ['Rotating', 'Anchor', 'Assistant_Manager']);
         if ($added_morning) {
             if ($gender === 'Male') $counts['morning_males']++; else $counts['morning_females']++;
             if ($skill === 'Good') $counts['morning_good']++;
             $counts['morning_total']++;
+            if ($is_floor) $counts['morning_floor_total']++;
         }
         if ($added_night) {
             if ($gender === 'Male') $counts['night_males']++; else $counts['night_females']++;
             if ($skill === 'Good') $counts['night_good']++;
             $counts['night_total']++;
+            if ($is_floor) $counts['night_floor_total']++;
         }
 
         $possible = true;
@@ -343,8 +346,8 @@ function solveRotatingShifts($idx, $working_rotating, $day_idx, $calendar_days, 
             if ($counts['night_females'] + $remaining_females < $req['n_females']) $possible = false;
             if ($counts['morning_good'] + $remaining_good < $req['m_good']) $possible = false;
             if ($counts['night_good'] + $remaining_good < $req['n_good']) $possible = false;
-            if ($counts['morning_total'] + $remaining_staff < $req['m_total']) $possible = false;
-            if ($counts['night_total'] + $remaining_staff < $req['n_total']) $possible = false;
+            if ($counts['morning_floor_total'] + $remaining_staff < $req['m_total']) $possible = false;
+            if ($counts['night_floor_total'] + $remaining_staff < $req['n_total']) $possible = false;
         }
 
         if ($possible) solveRotatingShifts($idx + 1, $working_rotating, $day_idx, $calendar_days, $roster, $employees, $counts, $off_counts, $valid_choices, $req, $found_count, $relaxation_level, $core_working_count);
@@ -353,11 +356,13 @@ function solveRotatingShifts($idx, $working_rotating, $day_idx, $calendar_days, 
             if ($gender === 'Male') $counts['morning_males']--; else $counts['morning_females']--;
             if ($skill === 'Good') $counts['morning_good']--;
             $counts['morning_total']--;
+            if ($is_floor) $counts['morning_floor_total']--;
         }
         if ($added_night) {
             if ($gender === 'Male') $counts['night_males']--; else $counts['night_females']--;
             if ($skill === 'Good') $counts['night_good']--;
             $counts['night_total']--;
+            if ($is_floor) $counts['night_floor_total']--;
         }
         $roster[$emp_id][$date] = null;
     }
@@ -552,18 +557,28 @@ function solveRosterJoint($day_idx, $calendar_days, $employees, &$roster, &$off_
         }
 
         $max_m_males = 0; $max_n_males = 0; $max_m_females = 0; $max_n_females = 0;
-        $max_m_good = 0; $max_n_good = 0; $max_m_total = 0; $max_n_total = 0;
+        $max_m_good = 0; $max_n_good = 0; $max_m_floor_total = 0; $max_n_floor_total = 0;
 
         foreach ($temp_roster as $eid => $sc) {
-            $gender = null; $skill = null;
-            foreach ($employees as $e) { if ($e['emp_id'] == $eid) { $gender = $e['gender']; $skill = $e['skill_level']; break; } }
+            $gender = null; $skill = null; $role = 'Rotating';
+            foreach ($employees as $e) { 
+                if ($e['emp_id'] == $eid) { 
+                    $gender = $e['gender']; 
+                    $skill = $e['skill_level']; 
+                    $role = isset($e['role']) ? $e['role'] : 'Rotating';
+                    break; 
+                } 
+            }
+            $is_floor = in_array($role, ['Rotating', 'Anchor', 'Assistant_Manager']);
             if (in_array($sc, ['M', 'Mw', 'F', 'No', 'Nh'])) {
                 if ($gender === 'Male') $max_m_males++; else $max_m_females++;
-                if ($skill === 'Good') $max_m_good++; $max_m_total++;
+                if ($skill === 'Good') $max_m_good++; 
+                if ($is_floor) $max_m_floor_total++;
             }
             if (in_array($sc, ['N', 'Nw', 'F', 'Nh'])) {
                 if ($gender === 'Male') $max_n_males++; else $max_n_females++;
-                if ($skill === 'Good') $max_n_good++; $max_n_total++;
+                if ($skill === 'Good') $max_n_good++; 
+                if ($is_floor) $max_n_floor_total++;
             }
         }
 
@@ -580,19 +595,31 @@ function solveRosterJoint($day_idx, $calendar_days, $employees, &$roster, &$off_
             }
             
             $is_male = ($emp['gender'] === 'Male'); $is_good = ($emp['skill_level'] === 'Good');
+            $is_floor = in_array($role, ['Rotating', 'Anchor', 'Assistant_Manager']);
             if ($can_morning) {
                 if ($is_male) $max_m_males++; else $max_m_females++;
-                if ($is_good) $max_m_good++; $max_m_total++;
+                if ($is_good) $max_m_good++; 
+                if ($is_floor) $max_m_floor_total++;
             }
             if ($can_night) {
                 if ($is_male) $max_n_males++; else $max_n_females++;
-                if ($is_good) $max_n_good++; $max_n_total++;
+                if ($is_good) $max_n_good++; 
+                if ($is_floor) $max_n_floor_total++;
             }
         }
 
-        $total_working_count = count($temp_roster) + count($working_rotating);
-        $target_m_total = min(5, $total_working_count);
-        $target_n_total = min(5, $total_working_count);
+        $floor_working_count = 0;
+        foreach ($employees as $emp) {
+            $emp_id = $emp['emp_id'];
+            if (in_array($emp_id, $off_group)) continue;
+            $role = isset($emp['role']) ? $emp['role'] : 'Rotating';
+            if (in_array($role, ['Rotating', 'Anchor', 'Assistant_Manager'])) {
+                $floor_working_count++;
+            }
+        }
+
+        $target_m_total = min(5, $floor_working_count);
+        $target_n_total = min(5, $floor_working_count);
         
         if ($relaxation_level >= 1) {
             $target_m_total = max(3, $target_m_total - 1);
@@ -609,23 +636,41 @@ function solveRosterJoint($day_idx, $calendar_days, $employees, &$roster, &$off_
                 'm_males' => min($gender_min_males, $max_m_males), 'n_males' => min($gender_min_males, $max_n_males),
                 'm_females' => min($gender_min_fems, $max_m_females), 'n_females' => min($gender_min_fems, $max_n_females),
                 'm_good' => min(1, $max_m_good), 'n_good' => min(1, $max_n_good),
-                'm_total' => min($target_m_total, $max_m_total), 'n_total' => min($target_n_total, $max_n_total)
+                'm_total' => min($target_m_total, $max_m_floor_total), 'n_total' => min($target_n_total, $max_n_floor_total)
             ];
         }
 
-        $counts = ['morning_males' => 0, 'morning_females' => 0, 'night_males' => 0, 'night_females' => 0, 'morning_good' => 0, 'night_good' => 0, 'morning_total' => 0, 'night_total' => 0];
+        $counts = [
+            'morning_males' => 0, 'morning_females' => 0, 
+            'night_males' => 0, 'night_females' => 0, 
+            'morning_good' => 0, 'night_good' => 0, 
+            'morning_total' => 0, 'night_total' => 0,
+            'morning_floor_total' => 0, 'night_floor_total' => 0
+        ];
         
         foreach ($temp_roster as $eid => $sc) {
             $roster[$eid][$date] = $sc;
-            $gender = null; $skill = null;
-            foreach ($employees as $e) { if ($e['emp_id'] == $eid) { $gender = $e['gender']; $skill = $e['skill_level']; break; } }
+            $gender = null; $skill = null; $role = 'Rotating';
+            foreach ($employees as $e) { 
+                if ($e['emp_id'] == $eid) { 
+                    $gender = $e['gender']; 
+                    $skill = $e['skill_level']; 
+                    $role = isset($e['role']) ? $e['role'] : 'Rotating';
+                    break; 
+                } 
+            }
+            $is_floor = in_array($role, ['Rotating', 'Anchor', 'Assistant_Manager']);
             if (in_array($sc, ['M', 'Mw', 'F', 'No', 'Nh'])) {
                 if ($gender === 'Male') $counts['morning_males']++; else $counts['morning_females']++;
-                if ($skill === 'Good') $counts['morning_good']++; $counts['morning_total']++;
+                if ($skill === 'Good') $counts['morning_good']++; 
+                $counts['morning_total']++;
+                if ($is_floor) $counts['morning_floor_total']++;
             }
             if (in_array($sc, ['N', 'Nw', 'F', 'Nh'])) {
                 if ($gender === 'Male') $counts['night_males']++; else $counts['night_females']++;
-                if ($skill === 'Good') $counts['night_good']++; $counts['night_total']++;
+                if ($skill === 'Good') $counts['night_good']++; 
+                $counts['night_total']++;
+                if ($is_floor) $counts['night_floor_total']++;
             }
         }
 
