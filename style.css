@@ -1012,30 +1012,104 @@ table.modern-table tbody tr:hover {
 /* Floating Action Bar */
 .floating-bar {
     position: fixed;
-    bottom: 24px;
+    bottom: 28px;
     left: 50%;
     transform: translateX(-50%);
-    background-color: rgba(255, 255, 255, 0.85);
+    background-color: rgba(15, 23, 42, 0.95); /* Premium deep dark slate */
     -webkit-backdrop-filter: blur(20px) saturate(180%);
     backdrop-filter: blur(20px) saturate(180%);
-    border: 1px solid rgba(0, 0, 0, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: var(--radius-pill);
-    padding: 8px 18px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+    padding: 8px 20px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3), 0 2px 4px rgba(0, 0, 0, 0.1);
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
     z-index: 999;
     transition: all 0.3s var(--ease-ios);
 }
 
-.floating-bar-label {
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin-right: 6px;
+.floating-bar-divider {
+    border-left: 1px solid rgba(255, 255, 255, 0.15);
+    height: 22px;
+    margin: 0 4px;
+}
+
+.floating-bar .btn {
+    white-space: nowrap !important;
+    height: 38px !important;
+    padding: 0 1.25rem !important;
+    font-size: 0.85rem !important;
+    border-radius: var(--radius-pill) !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-weight: 600 !important;
+}
+
+/* Adjust secondary buttons (like Undo/Redo) inside the dark bar */
+.floating-bar .btn-secondary {
+    background-color: rgba(255, 255, 255, 0.08) !important;
+    color: rgba(255, 255, 255, 0.9) !important;
+    border: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+
+.floating-bar .btn-secondary:hover {
+    background-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+.floating-bar .btn-secondary:disabled {
+    background-color: rgba(255, 255, 255, 0.03) !important;
+    color: rgba(255, 255, 255, 0.3) !important;
+    border-color: transparent !important;
+    cursor: not-allowed !important;
+}
+
+/* Adjust clear roster button inside dark bar */
+.floating-bar .btn-clear {
+    background-color: transparent !important;
+    color: #ff453a !important; /* Premium iOS red */
+    border: 1px solid rgba(255, 69, 58, 0.3) !important;
+}
+
+.floating-bar .btn-clear:hover {
+    background-color: rgba(255, 69, 58, 0.1) !important;
+}
+
+/* Adjust export / generate buttons inside dark bar to fit color scheme */
+.floating-bar .btn-export-image {
+    background-color: #30d158 !important; /* Premium green */
+    color: #ffffff !important;
+    border: none !important;
+    box-shadow: 0 4px 12px rgba(48, 209, 88, 0.2) !important;
+}
+.floating-bar .btn-export-image:hover {
+    background-color: #24b348 !important;
+}
+
+.floating-bar .btn-export-pdf {
+    background-color: #ff375f !important; /* Premium pink/red */
+    color: #ffffff !important;
+    border: none !important;
+    box-shadow: 0 4px 12px rgba(255, 55, 95, 0.2) !important;
+}
+.floating-bar .btn-export-pdf:hover {
+    background-color: #e0264b !important;
+}
+
+.floating-bar .btn-primary {
+    background-color: #0a84ff !important; /* Premium iOS blue */
+    color: #ffffff !important;
+    border: none !important;
+    box-shadow: 0 4px 12px rgba(10, 132, 255, 0.25) !important;
+}
+.floating-bar .btn-primary:hover {
+    background-color: #0070e3 !important;
+}
+.floating-bar .btn-primary:disabled {
+    background-color: rgba(255, 255, 255, 0.05) !important;
+    color: rgba(255, 255, 255, 0.3) !important;
+    box-shadow: none !important;
 }
 
 /* Developer Credits Footer styling */
@@ -1203,7 +1277,7 @@ table.modern-table tbody tr:hover {
         justify-content: center;
         gap: 8px;
     }
-    .floating-bar-label {
+    .floating-bar-divider {
         display: none;
     }
     .floating-bar .btn {
