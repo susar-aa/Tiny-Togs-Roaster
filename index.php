@@ -260,17 +260,6 @@ endif;
                             View, generate, export, or execute emergency swaps for the monthly shift schedule.
                         </p>
                     </div>
-                    <div style="display: flex; gap: 0.5rem; align-items: center;">
-                        <button class="btn btn-secondary" id="btn-undo" title="Undo last change" disabled style="display: inline-flex; align-items: center; gap: 6px; padding: 0.4rem 0.8rem; font-size: 0.85rem; height: 36px;">
-                            <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3"></path></svg>
-                            Undo
-                        </button>
-                        <button class="btn btn-secondary" id="btn-redo" title="Redo next change" disabled style="display: inline-flex; align-items: center; gap: 6px; padding: 0.4rem 0.8rem; font-size: 0.85rem; height: 36px;">
-                            <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 15l6-6m0 0l-6-6m6 6H9a6 6 0 000 12h3"></path></svg>
-                            Redo
-                        </button>
-                        <button class="btn btn-clear" id="btn-clear-roster" style="height: 36px;">Clear Roster</button>
-                    </div>
                 </div>
 
                 <!-- ADD THIS NEW PROGRESS BAR CONTAINER HERE -->
@@ -355,6 +344,19 @@ endif;
             <!-- Floating Action Bar -->
             <div class="floating-bar">
                 <span class="floating-bar-label">Roster Actions:</span>
+                
+                <button class="btn btn-secondary" id="btn-undo" title="Undo last change" disabled style="display: inline-flex; align-items: center; gap: 6px; padding: 0.4rem 0.8rem; font-size: 0.85rem; height: 36px; border-radius: var(--radius-pill);">
+                    <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3"></path></svg>
+                    Undo
+                </button>
+                <button class="btn btn-secondary" id="btn-redo" title="Redo next change" disabled style="display: inline-flex; align-items: center; gap: 6px; padding: 0.4rem 0.8rem; font-size: 0.85rem; height: 36px; border-radius: var(--radius-pill);">
+                    <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 15l6-6m0 0l-6-6m6 6H9a6 6 0 000 12h3"></path></svg>
+                    Redo
+                </button>
+                <button class="btn btn-clear" id="btn-clear-roster" style="height: 36px; border-radius: var(--radius-pill);">Clear Roster</button>
+                
+                <span style="border-left: 1px solid var(--border-color); height: 20px; margin: 0 0.25rem;"></span>
+                
                 <button class="btn btn-export-image" id="btn-export-image">Export Image</button>
                 <button class="btn btn-export-pdf" id="btn-export-pdf">Export PDF</button>
                 <button class="btn btn-primary" id="btn-generate-roster">Generate Timetable</button>

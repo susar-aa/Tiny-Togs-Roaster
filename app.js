@@ -561,7 +561,7 @@ document.addEventListener('DOMContentLoaded', () => {
         viewport.className = 'roster-viewport';
         const grid = document.createElement('div');
         grid.className = 'roster-grid-table';
-        grid.style.gridTemplateColumns = `var(--emp-col-width, 160px) repeat(${state.calendarDays.length}, minmax(42px, 1fr))`;
+        grid.style.gridTemplateColumns = `var(--emp-col-width, 160px) repeat(${state.calendarDays.length}, minmax(32px, 1fr))`;
         grid.style.setProperty('--days-count', state.calendarDays.length);
 
         const emptyHead = document.createElement('div');
@@ -985,7 +985,7 @@ document.addEventListener('DOMContentLoaded', () => {
         grid.className = 'roster-grid-table';
         
         const daysCount = state.calendarDays.length;
-        grid.style.gridTemplateColumns = `var(--emp-col-width, 160px) repeat(${daysCount}, minmax(42px, 1fr))`;
+        grid.style.gridTemplateColumns = `var(--emp-col-width, 160px) repeat(${daysCount}, minmax(32px, 1fr))`;
         grid.style.setProperty('--days-count', daysCount);
 
         const emptyHead = document.createElement('div');
