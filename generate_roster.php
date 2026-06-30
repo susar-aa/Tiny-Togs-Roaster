@@ -625,12 +625,18 @@ function solveRosterJoint($day_idx, $calendar_days, $employees, &$roster, &$off_
         $gender_min_fems = ($relaxation_level >= 2) ? 1 : 2;
 
         if ($relaxation_level >= 3) {
-            $req = ['m_males' => 0, 'n_males' => 0, 'm_females' => 0, 'n_females' => 0, 'm_good' => 0, 'n_good' => 0, 'm_total' => 1, 'n_total' => 1];
+            $req = [
+                'm_males' => 0, 'n_males' => 0,
+                'm_females' => 0, 'n_females' => 0,
+                'm_good' => 0, 'n_good' => 0,
+                'm_total' => min($target_m_total, $max_m_floor_total),
+                'n_total' => min($target_n_total, $max_n_floor_total)
+            ];
         } else {
             $req = [
                 'm_males' => min($gender_min_males, $max_m_males), 'n_males' => min($gender_min_males, $max_n_males),
                 'm_females' => min($gender_min_fems, $max_m_females), 'n_females' => min($gender_min_fems, $max_n_females),
-                'm_good' => min(1, $max_m_good), 'n_good' => min(1, $max_n_good),
+                'm_good' => 0, 'n_good' => 0,
                 'm_total' => min($target_m_total, $max_m_floor_total), 'n_total' => min($target_n_total, $max_n_floor_total)
             ];
         }
