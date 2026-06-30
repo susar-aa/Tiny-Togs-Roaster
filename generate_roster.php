@@ -241,6 +241,9 @@ function solveRotatingShifts($idx, $working_rotating, $day_idx, $calendar_days, 
     $night_code = $is_weekend_or_holiday ? 'Nw' : 'N';
 
     if ($idx >= count($working_rotating)) {
+        if ($counts['morning_floor_total'] < $req['m_total'] || $counts['night_floor_total'] < $req['n_total']) {
+            return;
+        }
         $valid_choices[] = array_combine(array_column($working_rotating, 'emp_id'), array_map(fn($emp) => $roster[$emp['emp_id']][$date], $working_rotating));
         $found_count++;
         return;
@@ -291,6 +294,11 @@ function solveRotatingShifts($idx, $working_rotating, $day_idx, $calendar_days, 
             if ($relaxation_level < 3) {
                 if (($is_morning || $is_full) && $prev_is_night) continue; 
                 if ($is_night && $prev_is_night && $prev_prev_is_night) continue; 
+                
+                $prev_is_morning = in_array($prev_shift, ['M', 'Mw']);
+                $prev_prev_is_morning = in_array($prev_prev_shift, ['M', 'Mw']);
+                if ($is_morning && $prev_is_morning && $prev_prev_is_morning) continue;
+
                 if ($is_night && $needed == 0) {
                     if ($prev_is_night && $days_left_in_month > 0) continue; 
                     elseif (!$prev_is_night && $days_left_in_month > 1) continue; 
@@ -308,13 +316,17 @@ function solveRotatingShifts($idx, $working_rotating, $day_idx, $calendar_days, 
         return; 
     }
 
-    $remaining_males = 0; $remaining_females = 0; $remaining_good = 0;
+    $remaining_males = 0; $remaining_females = 0; $remaining_good = 0; $remaining_staff = 0;
     for ($i = $idx + 1; $i < count($working_rotating); $i++) {
         if ($working_rotating[$i]['gender'] === 'Male') $remaining_males++;
         else $working_rotating[$i]['gender'] === 'Female' ? $remaining_females++ : null;
         if ($working_rotating[$i]['skill_level'] === 'Good') $remaining_good++;
+        
+        $r = isset($working_rotating[$i]['role']) ? $working_rotating[$i]['role'] : 'Rotating';
+        if (in_array($r, ['Rotating', 'Anchor'])) {
+            $remaining_staff++;
+        }
     }
-    $remaining_staff = count($working_rotating) - ($idx + 1);
 
     shuffle($final_opts);
 
@@ -707,7 +719,9 @@ function solveRosterJoint($day_idx, $calendar_days, $employees, &$roster, &$off_
                     $role = ''; foreach ($employees as $e) { if ($e['emp_id'] == $emp_id) { $role = isset($e['role']) ? $e['role'] : 'Rotating'; break; } }
                     $prev_shift = $roster[$emp_id][$prev_date] ?? null;
                     $prev_prev_shift = $roster[$emp_id][$prev_prev_date] ?? null;
-                    $consecutive_count = ($sc === $prev_shift && $prev_shift !== null && $prev_shift !== 'Off') ? 1 : 0;
+                    $sc_type = in_array($sc, ['M', 'Mw']) ? 'M' : (in_array($sc, ['N', 'Nw']) ? 'N' : $sc);
+                    $prev_type = in_array($prev_shift, ['M', 'Mw']) ? 'M' : (in_array($prev_shift, ['N', 'Nw']) ? 'N' : $prev_shift);
+                    $consecutive_count = ($sc_type === $prev_type && $prev_type !== null && $prev_type !== 'Off' && $prev_type !== 'F') ? 1 : 0;
 
                     if ($role === 'Rotating') {
                         $history = $emp_history[$emp_id] ?? null;
@@ -722,12 +736,12 @@ function solveRosterJoint($day_idx, $calendar_days, $employees, &$roster, &$off_
                             if (in_array($sc, ['N', 'Nw']) && in_array($prev_shift, ['N', 'Nw']) && in_array($prev_prev_shift, ['N', 'Nw'])) $score -= 200; 
                         }
                         if (in_array($sc, ['N', 'Nw'])) {
-                            if ($consecutive_count == 1) $score -= 20; 
+                            if ($consecutive_count == 1) $score -= 150; 
                             if (in_array($prev_shift, ['M', 'Mw'])) $score += 25; 
                             if ($prev_shift === 'Off') $score += 10; 
                         }
                         if (in_array($sc, ['M', 'Mw'])) {
-                            if ($consecutive_count == 1) $score -= 5; 
+                            if ($consecutive_count == 1) $score -= 150; 
                             if ($prev_shift === 'Off') $score += 30; 
                         }
                         if ($sc === 'F') {
