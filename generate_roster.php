@@ -552,7 +552,23 @@ function solveRosterJoint($day_idx, $calendar_days, $employees, &$roster, &$off_
                     for ($d = 0; $d < $day_idx; $d++) {
                         if (($roster[$emp_id][$calendar_days[$d]['date']] ?? null) === 'Nh') $nh_count++;
                     }
-                    $temp_roster[$emp_id] = ($nh_count < 5) ? 'Nh' : 'No';
+                    
+                    $asst_mgr_works_full = false;
+                    foreach ($employees as $am_emp) {
+                        if (($am_emp['role'] ?? '') === 'Assistant_Manager') {
+                            $am_id = $am_emp['emp_id'];
+                            if (!in_array($am_id, $off_group)) {
+                                $am_day_of_week = (int)date('N', strtotime($date));
+                                $am_shift = in_array($am_day_of_week, [1, 3, 5]) ? ($is_weekend_or_holiday ? 'Mw' : 'M') : 'F';
+                                if ($am_shift === 'F') {
+                                    $asst_mgr_works_full = true;
+                                }
+                            }
+                            break;
+                        }
+                    }
+                    
+                    $temp_roster[$emp_id] = ($nh_count < 5 && $asst_mgr_works_full) ? 'Nh' : 'No';
                 } else {
                     $temp_roster[$emp_id] = 'No';
                 }
