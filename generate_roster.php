@@ -324,7 +324,7 @@ function solveRotatingShifts($idx, $working_rotating, $day_idx, $calendar_days, 
         $added_morning = in_array($sc, ['M', 'Mw', 'F']);
         $added_night = in_array($sc, ['N', 'Nw', 'F']);
         
-        $is_floor = in_array($role, ['Rotating', 'Anchor', 'Assistant_Manager']);
+        $is_floor = in_array($role, ['Rotating', 'Anchor']);
         if ($added_morning) {
             if ($gender === 'Male') $counts['morning_males']++; else $counts['morning_females']++;
             if ($skill === 'Good') $counts['morning_good']++;
@@ -569,7 +569,7 @@ function solveRosterJoint($day_idx, $calendar_days, $employees, &$roster, &$off_
                     break; 
                 } 
             }
-            $is_floor = in_array($role, ['Rotating', 'Anchor', 'Assistant_Manager']);
+            $is_floor = in_array($role, ['Rotating', 'Anchor']);
             if (in_array($sc, ['M', 'Mw', 'F', 'No', 'Nh'])) {
                 if ($gender === 'Male') $max_m_males++; else $max_m_females++;
                 if ($skill === 'Good') $max_m_good++; 
@@ -595,7 +595,7 @@ function solveRosterJoint($day_idx, $calendar_days, $employees, &$roster, &$off_
             }
             
             $is_male = ($emp['gender'] === 'Male'); $is_good = ($emp['skill_level'] === 'Good');
-            $is_floor = in_array($role, ['Rotating', 'Anchor', 'Assistant_Manager']);
+            $is_floor = in_array($role, ['Rotating', 'Anchor']);
             if ($can_morning) {
                 if ($is_male) $max_m_males++; else $max_m_females++;
                 if ($is_good) $max_m_good++; 
@@ -613,7 +613,7 @@ function solveRosterJoint($day_idx, $calendar_days, $employees, &$roster, &$off_
             $emp_id = $emp['emp_id'];
             if (in_array($emp_id, $off_group)) continue;
             $role = isset($emp['role']) ? $emp['role'] : 'Rotating';
-            if (in_array($role, ['Rotating', 'Anchor', 'Assistant_Manager'])) {
+            if (in_array($role, ['Rotating', 'Anchor'])) {
                 $floor_working_count++;
             }
         }
@@ -659,7 +659,7 @@ function solveRosterJoint($day_idx, $calendar_days, $employees, &$roster, &$off_
                     break; 
                 } 
             }
-            $is_floor = in_array($role, ['Rotating', 'Anchor', 'Assistant_Manager']);
+            $is_floor = in_array($role, ['Rotating', 'Anchor']);
             if (in_array($sc, ['M', 'Mw', 'F', 'No', 'Nh'])) {
                 if ($gender === 'Male') $counts['morning_males']++; else $counts['morning_females']++;
                 if ($skill === 'Good') $counts['morning_good']++; 
