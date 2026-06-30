@@ -952,9 +952,22 @@ document.addEventListener('DOMContentLoaded', () => {
             
             let formattedRole = emp.role ? emp.role.replace('_', ' ') : 'Rotating';
             
+            let offDaysCount = 0;
+            state.calendarDays.forEach(day => {
+                const assignment = rosterMap[emp.emp_id]?.[day.date];
+                const shiftCode = assignment ? assignment.shift_code : 'Off';
+                if (shiftCode === 'Off') offDaysCount++;
+            });
+            const availableLeaves = Math.max(0, 4 - offDaysCount);
+            
+            const badgeBg = availableLeaves === 0 ? '#fef2f2' : '#ecfdf5';
+            const badgeColor = availableLeaves === 0 ? '#b91c1c' : '#047857';
+            const badgeBorder = availableLeaves === 0 ? '#fecaca' : '#a7f3d0';
+            
             labelCell.innerHTML = `
-                <div class="roster-emp-name" title="${escapeHtml(emp.name)}">
-                    ${escapeHtml(emp.name)}
+                <div class="roster-emp-name" title="${escapeHtml(emp.name)}" style="display: flex; align-items: center; justify-content: space-between; gap: 0.25rem; width: 100%;">
+                    <span>${escapeHtml(emp.name)}</span>
+                    <span class="badge" style="font-size:0.6rem; padding:0.1rem 0.25rem; background-color:${badgeBg}; color:${badgeColor}; border: 1px solid ${badgeBorder}; font-weight: 500; border-radius: 4px; white-space: nowrap;">Avail: ${availableLeaves}</span>
                 </div>
                 <div class="roster-emp-role">
                     ${formattedRole}
